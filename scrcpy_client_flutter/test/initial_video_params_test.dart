@@ -58,6 +58,26 @@ Uint8List _h264ConfigPayload({
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  const decoderChannel = MethodChannel('scrcpy/decoder');
+
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(decoderChannel, (call) async {
+          if (call.method == 'init') {
+            if (Platform.isWindows) {
+              return <String, Object>{'textureId': -1, 'decoderType': 'cpu'};
+            }
+            return -1;
+          }
+          return null;
+        });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(decoderChannel, null);
+  });
+
   test('USB 首次连接请求显示信息并切换为设备原始分辨率', () async {
     SharedPreferences.setMockInitialValues({});
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
@@ -99,18 +119,20 @@ void main() {
     try {
       await state.initPrefs();
       await state.connect();
-      for (var i = 0;
-          i < 20 &&
-              (state.videoConfig == null ||
-                  state.displayInfo == null ||
-                  !controls.contains(ControlSubType.changeVideoParams));
-          i++) {
+      for (
+        var i = 0;
+        i < 20 &&
+            (state.videoConfig == null ||
+                state.displayInfo == null ||
+                !controls.contains(ControlSubType.changeVideoParams));
+        i++
+      ) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
-      expect(
-        controls.take(2),
-        [ControlSubType.getDisplayInfo, ControlSubType.listApps],
-      );
+      expect(controls.take(2), [
+        ControlSubType.getDisplayInfo,
+        ControlSubType.listApps,
+      ]);
       expect(state.videoConfig?.codec, VideoCodec.h264);
       expect(state.displayInfo?.logicalWidth, 1280);
       expect(state.displayInfo?.logicalHeight, 800);
@@ -174,9 +196,11 @@ void main() {
     try {
       await state.initPrefs();
       await state.connect();
-      for (var i = 0;
-          i < 20 && (state.videoConfig == null || state.displayInfo == null);
-          i++) {
+      for (
+        var i = 0;
+        i < 20 && (state.videoConfig == null || state.displayInfo == null);
+        i++
+      ) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
       expect(state.targetMaxShort, 720);
@@ -245,9 +269,11 @@ void main() {
     try {
       await state.initPrefs();
       await state.connect();
-      for (var i = 0;
-          i < 20 && (state.videoConfig == null || state.displayInfo == null);
-          i++) {
+      for (
+        var i = 0;
+        i < 20 && (state.videoConfig == null || state.displayInfo == null);
+        i++
+      ) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
       expect(state.targetMaxShort, 1080);
@@ -397,7 +423,12 @@ void main() {
       var decoderFeedCount = 0;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(decoderChannel, (call) async {
-            if (call.method == 'init') return -1;
+            if (call.method == 'init') {
+              if (Platform.isWindows) {
+                return <String, Object>{'textureId': -1, 'decoderType': 'cpu'};
+              }
+              return -1;
+            }
             if (call.method == 'feed') decoderFeedCount++;
             return null;
           });
