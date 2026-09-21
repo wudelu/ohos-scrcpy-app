@@ -171,6 +171,13 @@ class _MirrorViewState extends State<MirrorView> {
     return encodeTouch(x, y, pointerId);
   }
 
+  int _touchPointerId(PointerEvent event) {
+    // Windows 鼠标 pointer 是 Flutter 的全局事件编号，不是设备触点编号。
+    // legacy OpenHarmony 注入接口要求单指鼠标序列使用稳定的小编号。
+    if (event.kind == PointerDeviceKind.mouse) return 0;
+    return event.pointer & 0xFFFF;
+  }
+
   Uint8List _mousePayload(
     Offset local,
     Size renderSize,
@@ -347,7 +354,7 @@ class _MirrorViewState extends State<MirrorView> {
                 size,
                 effective.width,
                 effective.height,
-                e.pointer & 0xFFFF,
+                _touchPointerId(e),
               ),
             );
           }
@@ -364,7 +371,7 @@ class _MirrorViewState extends State<MirrorView> {
               size,
               effective.width,
               effective.height,
-              e.pointer & 0xFFFF,
+              _touchPointerId(e),
             ),
           );
         },
@@ -392,7 +399,7 @@ class _MirrorViewState extends State<MirrorView> {
                 size,
                 effective.width,
                 effective.height,
-                e.pointer & 0xFFFF,
+                _touchPointerId(e),
               ),
             );
           }
@@ -407,7 +414,7 @@ class _MirrorViewState extends State<MirrorView> {
               size,
               effective.width,
               effective.height,
-              e.pointer & 0xFFFF,
+              _touchPointerId(e),
             ),
           );
         },

@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scrcpy_client_flutter/decoder/video_decoder.dart';
@@ -8,6 +9,22 @@ import 'package:scrcpy_client_flutter/state/app_state.dart';
 import 'package:scrcpy_client_flutter/ui/sidebar.dart';
 import 'package:scrcpy_client_flutter/ui/mirror_view.dart';
 import 'package:scrcpy_client_flutter/ui/toast.dart';
+
+class _ControlCall {
+  final int subType;
+  final Uint8List body;
+
+  const _ControlCall(this.subType, this.body);
+}
+
+class _RecordingAppState extends AppState {
+  final List<_ControlCall> controls = <_ControlCall>[];
+
+  @override
+  void sendControl(int subType, Uint8List body) {
+    controls.add(_ControlCall(subType, Uint8List.fromList(body)));
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -132,6 +149,60 @@ void main() {
     expect(find.textContaining('视频 1152×720（90%）'), findsOneWidget);
     final rotated = tester.widget<RotatedBox>(find.byType(RotatedBox));
     expect(rotated.quarterTurns, 3);
+
+    state.dispose();
+  });
+
+  testWidgets('Windows 鼠标点击使用固定触点编号和有效视频坐标', (tester) async {
+    final state = _RecordingAppState();
+    state.connState = ConnState.connected;
+    state.displayInfo = const DisplayInfo(
+      logicalWidth: 1280,
+      logicalHeight: 800,
+      rotation: 3,
+    );
+    state.videoConfig = VideoConfig(
+      VideoCodec.h264,
+      720,
+      1152,
+      10,
+      Uint8List(0),
+      Uint8List(0),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 700,
+            child: MirrorView(state: state),
+          ),
+        ),
+      ),
+    );
+
+    final mirror = find.byType(RotatedBox);
+    final center = tester.getCenter(mirror);
+    final gesture = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+      pointer: 0x12345,
+    );
+    await gesture.addPointer(location: center);
+    await gesture.down(center);
+    await gesture.up();
+    await tester.pump();
+
+    expect(state.controls.map((_ControlCall call) => call.subType), <int>[
+      ControlSubType.touchDown,
+      ControlSubType.touchUp,
+    ]);
+    for (final call in state.controls) {
+      final data = ByteData.sublistView(call.body);
+      expect(data.getUint32(0, Endian.big), 576);
+      expect(data.getUint32(4, Endian.big), 360);
+      expect(data.getUint16(8, Endian.big), 0);
+    }
 
     state.dispose();
   });
