@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
@@ -20,8 +21,15 @@ class MirrorView extends StatefulWidget {
 }
 
 class _MirrorViewState extends State<MirrorView> {
+  static const Duration _minimumMouseTouchDuration = Duration(
+    milliseconds: 120,
+  );
+
   final GlobalKey _viewKey = GlobalKey();
   final Map<int, int> _pointerButtonMap = {};
+  final Map<int, Duration> _pointerDownTimes = {};
+  final Map<int, Timer> _pendingTouchUpTimers = {};
+  final Map<int, Uint8List> _pendingTouchUpPayloads = {};
   final FocusNode _focusNode = FocusNode();
   bool _trackpadScrolling = false;
   ConnState _prevConnState = ConnState.idle;
@@ -34,6 +42,14 @@ class _MirrorViewState extends State<MirrorView> {
 
   @override
   void dispose() {
+    for (final payload in _pendingTouchUpPayloads.values) {
+      widget.state.sendControl(ControlSubType.touchUp, payload);
+    }
+    for (final timer in _pendingTouchUpTimers.values) {
+      timer.cancel();
+    }
+    _pendingTouchUpTimers.clear();
+    _pendingTouchUpPayloads.clear();
     widget.state.removeListener(_onStateChanged);
     _focusNode.dispose();
     super.dispose();
@@ -178,6 +194,38 @@ class _MirrorViewState extends State<MirrorView> {
     return event.pointer & 0xFFFF;
   }
 
+  void _flushPendingTouchUp(int pointer) {
+    _pendingTouchUpTimers.remove(pointer)?.cancel();
+    final payload = _pendingTouchUpPayloads.remove(pointer);
+    if (payload != null) {
+      widget.state.sendControl(ControlSubType.touchUp, payload);
+    }
+  }
+
+  void _sendTouchUp(PointerEvent event, Uint8List payload, Duration? downTime) {
+    if (event.kind != PointerDeviceKind.mouse || downTime == null) {
+      widget.state.sendControl(ControlSubType.touchUp, payload);
+      return;
+    }
+
+    final elapsed = event.timeStamp - downTime;
+    final remaining = _minimumMouseTouchDuration - elapsed;
+    if (remaining <= Duration.zero) {
+      widget.state.sendControl(ControlSubType.touchUp, payload);
+      return;
+    }
+
+    _pendingTouchUpTimers.remove(event.pointer)?.cancel();
+    _pendingTouchUpPayloads[event.pointer] = payload;
+    _pendingTouchUpTimers[event.pointer] = Timer(remaining, () {
+      _pendingTouchUpTimers.remove(event.pointer);
+      final pendingPayload = _pendingTouchUpPayloads.remove(event.pointer);
+      if (pendingPayload != null && mounted) {
+        widget.state.sendControl(ControlSubType.touchUp, pendingPayload);
+      }
+    });
+  }
+
   Uint8List _mousePayload(
     Offset local,
     Size renderSize,
@@ -316,6 +364,7 @@ class _MirrorViewState extends State<MirrorView> {
         },
         onPointerDown: (e) {
           if (_trackpadScrolling) return;
+          _flushPendingTouchUp(e.pointer);
           _focusNode.requestFocus();
           final size = _renderedSize();
           if (size.isEmpty) return;
@@ -347,6 +396,7 @@ class _MirrorViewState extends State<MirrorView> {
             );
           } else {
             _pointerButtonMap[e.pointer] = -1;
+            _pointerDownTimes[e.pointer] = e.timeStamp;
             widget.state.sendControl(
               ControlSubType.touchDown,
               _touchPayload(
@@ -379,6 +429,7 @@ class _MirrorViewState extends State<MirrorView> {
           final size = _renderedSize();
           if (size.isEmpty) return;
           final btn = _pointerButtonMap.remove(e.pointer) ?? -1;
+          final downTime = _pointerDownTimes.remove(e.pointer);
           if (btn >= 0) {
             widget.state.sendControl(
               ControlSubType.mouseEvent,
@@ -392,8 +443,8 @@ class _MirrorViewState extends State<MirrorView> {
               ),
             );
           } else {
-            widget.state.sendControl(
-              ControlSubType.touchUp,
+            _sendTouchUp(
+              e,
               _touchPayload(
                 e.localPosition,
                 size,
@@ -401,12 +452,16 @@ class _MirrorViewState extends State<MirrorView> {
                 effective.height,
                 _touchPointerId(e),
               ),
+              downTime,
             );
           }
         },
         onPointerCancel: (e) {
           final size = _renderedSize();
           if (size.isEmpty) return;
+          _pointerDownTimes.remove(e.pointer);
+          _pendingTouchUpTimers.remove(e.pointer)?.cancel();
+          _pendingTouchUpPayloads.remove(e.pointer);
           widget.state.sendControl(
             ControlSubType.touchUp,
             _touchPayload(

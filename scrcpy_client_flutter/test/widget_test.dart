@@ -195,6 +195,12 @@ void main() {
 
     expect(state.controls.map((_ControlCall call) => call.subType), <int>[
       ControlSubType.touchDown,
+    ]);
+    await tester.pump(const Duration(milliseconds: 119));
+    expect(state.controls, hasLength(1));
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(state.controls.map((_ControlCall call) => call.subType), <int>[
+      ControlSubType.touchDown,
       ControlSubType.touchUp,
     ]);
     for (final call in state.controls) {
@@ -203,6 +209,25 @@ void main() {
       expect(data.getUint32(4, Endian.big), 360);
       expect(data.getUint16(8, Endian.big), 0);
     }
+
+    state.controls.clear();
+    await gesture.down(center);
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.down(center);
+    expect(state.controls.map((_ControlCall call) => call.subType), <int>[
+      ControlSubType.touchDown,
+      ControlSubType.touchUp,
+      ControlSubType.touchDown,
+    ]);
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(state.controls.map((_ControlCall call) => call.subType), <int>[
+      ControlSubType.touchDown,
+      ControlSubType.touchUp,
+      ControlSubType.touchDown,
+      ControlSubType.touchUp,
+    ]);
 
     state.dispose();
   });
