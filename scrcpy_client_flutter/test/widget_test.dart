@@ -6,6 +6,7 @@ import 'package:scrcpy_client_flutter/decoder/video_decoder.dart';
 import 'package:scrcpy_client_flutter/net/protocol.dart';
 import 'package:scrcpy_client_flutter/state/app_state.dart';
 import 'package:scrcpy_client_flutter/ui/sidebar.dart';
+import 'package:scrcpy_client_flutter/ui/mirror_view.dart';
 import 'package:scrcpy_client_flutter/ui/toast.dart';
 
 void main() {
@@ -83,11 +84,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SizedBox(
-            width: 320,
-            height: 900,
-            child: Sidebar(state: state),
-          ),
+          body: SizedBox(width: 320, height: 900, child: Sidebar(state: state)),
         ),
       ),
     );
@@ -98,6 +95,116 @@ void main() {
     await tester.tap(find.text('录制与截图'));
     await tester.pumpAndSettle();
     expect(find.text('开始录制').hitTestable(), findsOneWidget);
+
+    state.dispose();
+  });
+
+  testWidgets('横屏显示设备与有效视频尺寸并旋转 Texture', (tester) async {
+    final state = AppState();
+    state.connState = ConnState.connected;
+    state.displayInfo = const DisplayInfo(
+      logicalWidth: 1280,
+      logicalHeight: 800,
+      rotation: 3,
+    );
+    state.videoConfig = VideoConfig(
+      VideoCodec.h264,
+      720,
+      1152,
+      10,
+      Uint8List(0),
+      Uint8List(0),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 700,
+            child: MirrorView(state: state),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('设备 1280×800 横屏'), findsOneWidget);
+    expect(find.textContaining('视频 1152×720（90%）'), findsOneWidget);
+    final rotated = tester.widget<RotatedBox>(find.byType(RotatedBox));
+    expect(rotated.quarterTurns, 3);
+
+    state.dispose();
+  });
+
+  testWidgets('竖屏显示有效视频尺寸且 Texture 不旋转', (tester) async {
+    final state = AppState();
+    state.connState = ConnState.connected;
+    state.displayInfo = const DisplayInfo(
+      logicalWidth: 800,
+      logicalHeight: 1280,
+      rotation: 0,
+    );
+    state.videoConfig = VideoConfig(
+      VideoCodec.h264,
+      720,
+      1152,
+      10,
+      Uint8List(0),
+      Uint8List(0),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 700,
+            child: MirrorView(state: state),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('设备 800×1280 竖屏'), findsOneWidget);
+    expect(find.textContaining('视频 720×1152（90%）'), findsOneWidget);
+    final rotated = tester.widget<RotatedBox>(find.byType(RotatedBox));
+    expect(rotated.quarterTurns, 0);
+
+    state.dispose();
+  });
+
+  testWidgets('状态栏提供 720 短边和 10fps 选项', (tester) async {
+    final state = AppState();
+    state.connState = ConnState.connected;
+    state.videoConfig = VideoConfig(
+      VideoCodec.h264,
+      720,
+      1152,
+      10,
+      Uint8List(0),
+      Uint8List(0),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 700,
+            child: MirrorView(state: state),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('切换分辨率'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('720p'), findsOneWidget);
+
+    await tester.tap(find.textContaining('720p'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('切换帧率'));
+    await tester.pumpAndSettle();
+    expect(find.text('10 fps'), findsOneWidget);
 
     state.dispose();
   });
