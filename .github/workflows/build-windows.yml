@@ -89,6 +89,17 @@ jobs:
           $version = (Get-Item $iscc).VersionInfo.ProductVersion
           Write-Host "使用 Inno Setup: $iscc ($version)"
 
+          $languageUrl = 'https://raw.githubusercontent.com/jrsoftware/issrc/c05512b1773ce81bf845c3d2e891f74452cf6f23/Files/Languages/ChineseSimplified.isl'
+          $languagePath = Join-Path $env:RUNNER_TEMP 'ChineseSimplified.isl'
+          Invoke-WebRequest -Uri $languageUrl -OutFile $languagePath
+          $expectedHash = 'e0b0b350e2245f3c5e65586dfe43d574f6e7f06f2261149aba284954b3fc9a8d'
+          $actualHash = (Get-FileHash -Path $languagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "Inno Setup 简体中文语言文件校验失败: $actualHash"
+          }
+          "INNO_CHINESE_SIMPLIFIED_ISL=$languagePath" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: 读取应用版本
         id: app
         shell: pwsh

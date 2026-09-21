@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = path.join(repositoryRoot, '.github', 'workflows', 'build-windows.yml');
+const packageScriptPath = path.join(
+  repositoryRoot,
+  'scrcpy_client_flutter',
+  'scripts',
+  'package_win.ps1',
+);
 
 test('Windows 工作流使用受控触发器和最小权限', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
@@ -50,4 +56,18 @@ test('Windows 工作流上传安装包并在产物缺失时失败', async () => 
   assert.match(workflow, /scrcpy_client_flutter\/build\/dist\/HongJing-Setup-\*\.exe/);
   assert.match(workflow, /^\s*if-no-files-found: error\s*$/m);
   assert.match(workflow, /^\s*retention-days: 14\s*$/m);
+});
+
+test('Windows 工作流为精简版 Inno Setup 提供固定版本的简体中文语言文件', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+  const packageScript = await readFile(packageScriptPath, 'utf8');
+
+  assert.match(
+    workflow,
+    /raw\.githubusercontent\.com\/jrsoftware\/issrc\/c05512b1773ce81bf845c3d2e891f74452cf6f23\/Files\/Languages\/ChineseSimplified\.isl/,
+  );
+  assert.match(workflow, /e0b0b350e2245f3c5e65586dfe43d574f6e7f06f2261149aba284954b3fc9a8d/);
+  assert.match(workflow, /INNO_CHINESE_SIMPLIFIED_ISL=\$languagePath/);
+  assert.match(packageScript, /\$env:INNO_CHINESE_SIMPLIFIED_ISL/);
+  assert.match(packageScript, /Test-Path \$env:INNO_CHINESE_SIMPLIFIED_ISL/);
 });
