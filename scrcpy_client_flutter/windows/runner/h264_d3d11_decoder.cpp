@@ -461,9 +461,22 @@ void H264D3D11Decoder::WorkerLoop() {
         MFGetAttributeSize(cur_out.Get(), MF_MT_FRAME_SIZE, &actual_w, &actual_h);
       }
 
+      // 硬件解码器可返回比编码画面更大的对齐纹理。协议配置尺寸才是
+      // 客户端可见区域，与 CPU 回退路径保持一致，并限制在实际资源范围内。
+      UINT32 visible_w = width_ > 0 ? width_ : actual_w;
+      UINT32 visible_h = height_ > 0 ? height_ : actual_h;
+      if (visible_w > actual_w) visible_w = actual_w;
+      if (visible_h > actual_h) visible_h = actual_h;
+      if (visible_w > tex_desc.Width) visible_w = tex_desc.Width;
+      if (visible_h > tex_desc.Height) visible_h = tex_desc.Height;
+      if (visible_w == 0 || visible_h == 0) {
+        result_sample->Release();
+        break;
+      }
+
       // 确保输出纹理和 VideoProcessor 就绪。截图读回与纹理替换/写入互斥。
       std::lock_guard<std::mutex> frame_lock(frame_mu_);
-      if (!EnsureOutputTexture(actual_w, actual_h)) {
+      if (!EnsureOutputTexture(visible_w, visible_h)) {
         result_sample->Release();
         break;
       }
@@ -499,6 +512,18 @@ void H264D3D11Decoder::WorkerLoop() {
       stream.Enable = TRUE;
       stream.pInputSurface = inputView.Get();
 
+      // 默认源矩形可能覆盖整个对齐纹理。横屏旋转后，对齐填充会表现为
+      // 纵向画面偏移，并使鼠标坐标与可见内容不一致，因此必须显式裁剪。
+      RECT source_rect = {
+          0, 0, static_cast<LONG>(visible_w), static_cast<LONG>(visible_h)};
+      RECT destination_rect = source_rect;
+      video_context_->VideoProcessorSetStreamSourceRect(
+          video_proc_.Get(), 0, TRUE, &source_rect);
+      video_context_->VideoProcessorSetStreamDestRect(
+          video_proc_.Get(), 0, TRUE, &destination_rect);
+      video_context_->VideoProcessorSetOutputTargetRect(
+          video_proc_.Get(), TRUE, &destination_rect);
+
       hr = video_context_->VideoProcessorBlt(
           video_proc_.Get(), outputView.Get(), 0, 1, &stream);
 
@@ -509,10 +534,10 @@ void H264D3D11Decoder::WorkerLoop() {
           std::lock_guard<std::mutex> lk(desc_mu_);
           descriptor_.struct_size = sizeof(FlutterDesktopGpuSurfaceDescriptor);
           descriptor_.handle = shared_handle_;
-          descriptor_.width = actual_w;
-          descriptor_.height = actual_h;
-          descriptor_.visible_width = actual_w;
-          descriptor_.visible_height = actual_h;
+          descriptor_.width = visible_w;
+          descriptor_.height = visible_h;
+          descriptor_.visible_width = visible_w;
+          descriptor_.visible_height = visible_h;
           descriptor_.format = kFlutterDesktopPixelFormatBGRA8888;
           descriptor_.release_callback = nullptr;
           descriptor_.release_context = nullptr;
@@ -525,8 +550,8 @@ void H264D3D11Decoder::WorkerLoop() {
         // 通知 IDecoder 回调（plugin 层可能需要知道尺寸变化）
         if (on_frame_) {
           DecodedFrame f;
-          f.w = static_cast<int>(actual_w);
-          f.h = static_cast<int>(actual_h);
+          f.w = static_cast<int>(visible_w);
+          f.h = static_cast<int>(visible_h);
           on_frame_(std::move(f));
         }
       }
