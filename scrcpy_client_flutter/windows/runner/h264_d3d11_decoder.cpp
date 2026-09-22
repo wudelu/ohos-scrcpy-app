@@ -225,8 +225,8 @@ bool H264D3D11Decoder::SetupVideoProcessor() {
 
   D3D11_VIDEO_PROCESSOR_CONTENT_DESC vpDesc = {};
   vpDesc.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
-  vpDesc.InputWidth = out_width_;
-  vpDesc.InputHeight = out_height_;
+  vpDesc.InputWidth = processor_input_width_;
+  vpDesc.InputHeight = processor_input_height_;
   vpDesc.OutputWidth = out_width_;
   vpDesc.OutputHeight = out_height_;
   vpDesc.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
@@ -240,21 +240,29 @@ bool H264D3D11Decoder::SetupVideoProcessor() {
   return true;
 }
 
-bool H264D3D11Decoder::EnsureOutputTexture(UINT width, UINT height) {
-  if (output_tex_ && out_width_ == width && out_height_ == height)
+bool H264D3D11Decoder::EnsureOutputTexture(UINT input_width,
+                                           UINT input_height,
+                                           UINT output_width,
+                                           UINT output_height) {
+  if (output_tex_ && processor_input_width_ == input_width &&
+      processor_input_height_ == input_height && out_width_ == output_width &&
+      out_height_ == output_height) {
     return true;
+  }
 
   output_tex_.Reset();
   shared_handle_ = nullptr;
   video_proc_.Reset();
   vp_enum_.Reset();
 
-  out_width_ = width;
-  out_height_ = height;
+  processor_input_width_ = input_width;
+  processor_input_height_ = input_height;
+  out_width_ = output_width;
+  out_height_ = output_height;
 
   D3D11_TEXTURE2D_DESC desc = {};
-  desc.Width = width;
-  desc.Height = height;
+  desc.Width = output_width;
+  desc.Height = output_height;
   desc.MipLevels = 1;
   desc.ArraySize = 1;
   desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -461,22 +469,20 @@ void H264D3D11Decoder::WorkerLoop() {
         MFGetAttributeSize(cur_out.Get(), MF_MT_FRAME_SIZE, &actual_w, &actual_h);
       }
 
-      // 硬件解码器可返回比编码画面更大的对齐纹理。协议配置尺寸才是
-      // 客户端可见区域，与 CPU 回退路径保持一致，并限制在实际资源范围内。
+      // Media Foundation 报告的是完整解码帧尺寸，但底层纹理可能包含额外对齐。
+      // 输入范围只限制在物理纹理内；协议尺寸作为独立输出尺寸用于完整缩放。
+      if (actual_w > tex_desc.Width) actual_w = tex_desc.Width;
+      if (actual_h > tex_desc.Height) actual_h = tex_desc.Height;
       UINT32 visible_w = width_ > 0 ? width_ : actual_w;
       UINT32 visible_h = height_ > 0 ? height_ : actual_h;
-      if (visible_w > actual_w) visible_w = actual_w;
-      if (visible_h > actual_h) visible_h = actual_h;
-      if (visible_w > tex_desc.Width) visible_w = tex_desc.Width;
-      if (visible_h > tex_desc.Height) visible_h = tex_desc.Height;
-      if (visible_w == 0 || visible_h == 0) {
+      if (actual_w == 0 || actual_h == 0 || visible_w == 0 || visible_h == 0) {
         result_sample->Release();
         break;
       }
 
       // 确保输出纹理和 VideoProcessor 就绪。截图读回与纹理替换/写入互斥。
       std::lock_guard<std::mutex> frame_lock(frame_mu_);
-      if (!EnsureOutputTexture(visible_w, visible_h)) {
+      if (!EnsureOutputTexture(actual_w, actual_h, visible_w, visible_h)) {
         result_sample->Release();
         break;
       }
@@ -512,11 +518,11 @@ void H264D3D11Decoder::WorkerLoop() {
       stream.Enable = TRUE;
       stream.pInputSurface = inputView.Get();
 
-      // 默认源矩形可能覆盖整个对齐纹理。横屏旋转后，对齐填充会表现为
-      // 纵向画面偏移，并使鼠标坐标与可见内容不一致，因此必须显式裁剪。
+      // 始终缩放完整解码帧，避免把协议输出尺寸误当作源裁剪区域。
       RECT source_rect = {
+          0, 0, static_cast<LONG>(actual_w), static_cast<LONG>(actual_h)};
+      RECT destination_rect = {
           0, 0, static_cast<LONG>(visible_w), static_cast<LONG>(visible_h)};
-      RECT destination_rect = source_rect;
       video_context_->VideoProcessorSetStreamSourceRect(
           video_proc_.Get(), 0, TRUE, &source_rect);
       video_context_->VideoProcessorSetStreamDestRect(
