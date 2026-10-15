@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "Guangzhou Shirui Electronics Co., Ltd." "\0"
-            VALUE "FileDescription", "鸿镜 OpenHarmony Scrcpy" "\0"
+            VALUE "FileDescription", "鸿蒙镜像 OpenHarmony Scrcpy" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "HongJing" "\0"
+            VALUE "InternalName", "HongmengMirror" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 Guangzhou Shirui Electronics Co., Ltd. All rights reserved." "\0"
             VALUE "OriginalFilename", "scrcpy_client_flutter.exe" "\0"
-            VALUE "ProductName", "鸿镜" "\0"
+            VALUE "ProductName", "鸿蒙镜像" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

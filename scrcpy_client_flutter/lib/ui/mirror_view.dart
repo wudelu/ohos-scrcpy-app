@@ -300,11 +300,13 @@ class _MirrorViewState extends State<MirrorView> {
   }
 
   Widget _buildMirror(VideoConfig cfg, int? textureId, DisplayInfo? display) {
-    final rotation = display?.rotation ?? 0;
+    final quarterTurns = display == null
+        ? 0
+        : DisplayGeometry.videoQuarterTurns(cfg.width, cfg.height, display);
     final effective = DisplayGeometry.effectiveSize(
       cfg.width,
       cfg.height,
-      rotation,
+      quarterTurns,
     );
     final ratio = effective.width / effective.height;
     final textureChild = (textureId == null || textureId < 0)
@@ -473,10 +475,7 @@ class _MirrorViewState extends State<MirrorView> {
             ),
           );
         },
-        child: RotatedBox(
-          quarterTurns: DisplayGeometry.quarterTurns(rotation),
-          child: textureChild,
-        ),
+        child: RotatedBox(quarterTurns: quarterTurns, child: textureChild),
       ),
     );
   }
@@ -529,11 +528,9 @@ class _StatusBar extends StatelessWidget {
     final display = state.displayInfo;
     final effective = cfg == null
         ? null
-        : DisplayGeometry.effectiveSize(
-            cfg.width,
-            cfg.height,
-            display?.rotation ?? 0,
-          );
+        : display == null
+        ? PixelSize(cfg.width, cfg.height)
+        : DisplayGeometry.effectiveVideoSize(cfg.width, cfg.height, display);
     final isH264 = cfg != null && cfg.codec == VideoCodec.h264;
     final isConnected = state.connState == ConnState.connected;
     final canControl = isH264 && isConnected;

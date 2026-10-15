@@ -1,5 +1,5 @@
 name: scrcpy_client_flutter
-description: "鸿镜 · OpenHarmony 屏幕镜像与 HDC 调试工具"
+description: "鸿蒙镜像 · OpenHarmony 屏幕镜像与 HDC 调试工具"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

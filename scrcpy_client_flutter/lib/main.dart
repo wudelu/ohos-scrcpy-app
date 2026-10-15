@@ -10,7 +10,7 @@ Future<void> main() async {
     const WindowOptions(
       size: Size(1280, 800),
       minimumSize: Size(1100, 680),
-      title: '',
+      title: '鸿蒙镜像',
       titleBarStyle: TitleBarStyle.normal,
     ),
     () async {

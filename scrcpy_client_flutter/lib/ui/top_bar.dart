@@ -56,7 +56,7 @@ class TopBar extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           const Text(
-            '鸿镜',
+            '鸿蒙镜像',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,

@@ -242,6 +242,7 @@ class AppState extends ChangeNotifier {
       final pending = <Packet>[];
       var verified = false;
       try {
+        await hdc.startScrcpyService(dev.serial);
         final lp = await hdc.forwardPort(dev.serial, kDevicePort);
         localPort = lp;
         final challenge = Uint8List(8);
@@ -460,10 +461,10 @@ class AppState extends ChangeNotifier {
     targetBitrate = targetMaxShort <= 1080
         ? 4 * 1000 * 1000
         : (isWifi ? 6 * 1000 * 1000 : 12 * 1000 * 1000);
-    final effective = DisplayGeometry.effectiveSize(
+    final effective = DisplayGeometry.effectiveVideoSize(
       config.width,
       config.height,
-      display.rotation,
+      display,
     );
     final currentShort = effective.width < effective.height
         ? effective.width

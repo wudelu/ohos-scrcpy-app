@@ -97,7 +97,7 @@ std::wstring TemporaryPath(const wchar_t* extension) {
   std::wstring name(guid_text);
   name.erase(std::remove(name.begin(), name.end(), L'{'), name.end());
   name.erase(std::remove(name.begin(), name.end(), L'}'), name.end());
-  return std::wstring(directory) + L"HongJing_" + name + L"." + extension;
+  return std::wstring(directory) + L"HongmengMirror_" + name + L"." + extension;
 }
 
 int GetInt(const EncodableMap& args, const char* key, int fallback = 0) {
@@ -296,7 +296,7 @@ MediaOperationResult H264Mp4Recorder::Start(const EncodableMap& args) {
     return result;
   }
   impl_->temporary_path = TemporaryPath(L"mp4");
-  impl_->final_path = DesktopPath(L"HongJing_Recording", L"mp4");
+  impl_->final_path = DesktopPath(L"HongmengMirror_Recording", L"mp4");
   if (impl_->temporary_path.empty() || impl_->final_path.empty()) {
     result.error = "无法定位系统桌面或临时目录";
     impl_->Reset(true);
@@ -479,7 +479,7 @@ MediaOperationResult SavePixelFrameAsPng(
   const UINT frame_width = static_cast<UINT>(width);
   const UINT frame_height = static_cast<UINT>(height);
   const std::wstring temporary = TemporaryPath(L"png");
-  const std::wstring destination = DesktopPath(L"HongJing_Screenshot", L"png");
+  const std::wstring destination = DesktopPath(L"HongmengMirror_Screenshot", L"png");
   if (temporary.empty() || destination.empty()) {
     result.error = "无法定位系统桌面或临时目录";
     return result;

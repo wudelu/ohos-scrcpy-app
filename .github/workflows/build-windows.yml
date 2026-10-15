@@ -126,7 +126,7 @@ jobs:
       - name: 上传 Windows 安装包
         uses: actions/upload-artifact@v4
         with:
-          name: HongJing-Windows-${{ steps.app.outputs.version }}
-          path: scrcpy_client_flutter/build/dist/HongJing-Setup-*.exe
+          name: HongmengMirror-Windows-${{ steps.app.outputs.version }}
+          path: scrcpy_client_flutter/build/dist/HongmengMirror-Setup-*.exe
           if-no-files-found: error
           retention-days: 14

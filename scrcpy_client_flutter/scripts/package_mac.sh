@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 鸿镜 macOS 打包脚本：build → codesign → DMG → DMG codesign [→ 公证 → staple]
+# 鸿蒙镜像 macOS 打包脚本：build → codesign → DMG → DMG codesign [→ 公证 → staple]
 #
 # 用法：
 #   ./scripts/package_mac.sh          仅构建并签名 DMG，不公证
@@ -39,8 +39,8 @@ if $NOTA_MODE; then
   check_var APPLE_TEAM_ID
   check_var APPLE_APP_PASSWORD
 fi
-APP_DISPLAY="鸿镜"
-PRODUCT="鸿镜.app"
+APP_DISPLAY="鸿蒙镜像"
+PRODUCT="鸿蒙镜像.app"
 ENTITLEMENTS="macos/Runner/Release.entitlements"
 VERSION="$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
 [[ -n "$VERSION" ]] || { echo "无法解析 pubspec.yaml version"; exit 1; }
@@ -54,7 +54,7 @@ flutter build macos --release
 APP="build/macos/Build/Products/Release/${PRODUCT}"
 [[ -d "$APP" ]] || { echo "构建产物不存在: $APP"; exit 1; }
 OUT="build/dist"; mkdir -p "$OUT"
-DMG="$OUT/HongJing-${VERSION}.dmg"
+DMG="$OUT/HongmengMirror-${VERSION}.dmg"
 rm -f "$DMG"
 
 # 内嵌 hdc 及其依赖库到 .app/Contents/Resources/

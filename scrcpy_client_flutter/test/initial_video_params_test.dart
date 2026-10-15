@@ -15,10 +15,19 @@ class _LocalForward extends HdcClient {
   final int port;
   int forwardCount = 0;
   int removeCount = 0;
+  int startCount = 0;
+  final calls = <String>[];
+
+  @override
+  Future<void> startScrcpyService(String serial) async {
+    startCount++;
+    calls.add('start');
+  }
 
   @override
   Future<int> forwardPort(String serial, int devicePort) async {
     forwardCount++;
+    calls.add('forward');
     return port;
   }
 
@@ -109,7 +118,8 @@ void main() {
         }
       });
     });
-    final state = AppState(hdc: _LocalForward(server.port));
+    final fakeHdc = _LocalForward(server.port);
+    final state = AppState(hdc: fakeHdc);
     state.selectedDevice = const HdcDevice(
       serial: 'TEST',
       state: 'Connected',
@@ -133,6 +143,8 @@ void main() {
         ControlSubType.getDisplayInfo,
         ControlSubType.listApps,
       ]);
+      expect(fakeHdc.startCount, 1);
+      expect(fakeHdc.calls.take(2), ['start', 'forward']);
       expect(state.videoConfig?.codec, VideoCodec.h264);
       expect(state.displayInfo?.logicalWidth, 1280);
       expect(state.displayInfo?.logicalHeight, 800);
@@ -441,7 +453,7 @@ void main() {
       try {
         await state.hdc.shell(
           target,
-          'aa start -a ScrcpyService -b com.ohos.scrcpy.server',
+          'aa start -a ScrcpyService -b com.hntek.openharmony.scrcpy.server',
         );
         await state.connect();
         expect(

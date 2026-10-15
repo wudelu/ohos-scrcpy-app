@@ -163,7 +163,7 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
         return
       }
       do {
-        let finalUrl = try MediaFilePath.desktopUrl(prefix: "HongJing_Screenshot", ext: "png")
+        let finalUrl = try MediaFilePath.desktopUrl(prefix: "HongmengMirror_Screenshot", ext: "png")
         let tempUrl = FileManager.default.temporaryDirectory
           .appendingPathComponent(UUID().uuidString)
           .appendingPathExtension("png")
@@ -558,7 +558,7 @@ private final class H264Mp4Recorder {
         }
         let format = try Self.createFormatDescription(sps: sps, pps: pps)
         let destination = try MediaFilePath.desktopUrl(
-          prefix: "HongJing_Recording", ext: "mp4")
+          prefix: "HongmengMirror_Recording", ext: "mp4")
         let temporary = FileManager.default.temporaryDirectory
           .appendingPathComponent(UUID().uuidString)
           .appendingPathExtension("mp4")

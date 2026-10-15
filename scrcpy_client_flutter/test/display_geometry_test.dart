@@ -27,7 +27,49 @@ void main() {
     expect(() => DisplayInfo.parse(body), throwsFormatException);
   });
 
-  test('四种 rotation 映射为确定的 Texture 旋转和有效尺寸', () {
+  test('原生方向视频按设备 rotation 旋转到逻辑显示方向', () {
+    const display = DisplayInfo(
+      logicalWidth: 1280,
+      logicalHeight: 800,
+      rotation: 3,
+    );
+
+    expect(DisplayGeometry.videoQuarterTurns(720, 1152, display), 3);
+    expect(
+      DisplayGeometry.effectiveVideoSize(720, 1152, display),
+      const PixelSize(1152, 720),
+    );
+  });
+
+  test('PixelMap 已匹配逻辑显示方向时不再旋转', () {
+    const display = DisplayInfo(
+      logicalWidth: 1280,
+      logicalHeight: 800,
+      rotation: 3,
+    );
+
+    expect(DisplayGeometry.videoQuarterTurns(1152, 720, display), 0);
+    expect(
+      DisplayGeometry.effectiveVideoSize(1152, 720, display),
+      const PixelSize(1152, 720),
+    );
+  });
+
+  test('180 度设备在宽高不变时仍应用系统 rotation', () {
+    const display = DisplayInfo(
+      logicalWidth: 1920,
+      logicalHeight: 560,
+      rotation: 2,
+    );
+
+    expect(DisplayGeometry.videoQuarterTurns(1920, 560, display), 2);
+    expect(
+      DisplayGeometry.effectiveVideoSize(1920, 560, display),
+      const PixelSize(1920, 560),
+    );
+  });
+
+  test('基础 rotation 映射和有效尺寸保持确定', () {
     expect(DisplayGeometry.quarterTurns(0), 0);
     expect(DisplayGeometry.quarterTurns(1), 1);
     expect(DisplayGeometry.quarterTurns(2), 2);

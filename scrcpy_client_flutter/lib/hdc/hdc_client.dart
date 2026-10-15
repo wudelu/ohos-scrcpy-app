@@ -3,13 +3,18 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'device.dart';
+import 'hdc_locator.dart';
 
 /// 包装系统 hdc CLI。优先使用应用内嵌的 hdc，其次查找系统 PATH。
 class HdcClient {
   String _hdcPath;
   bool _resolved = false;
+  late final HdcLocator _locator;
 
-  HdcClient({String hdcPath = 'hdc'}) : _hdcPath = hdcPath;
+  HdcClient({String hdcPath = 'hdc', HdcLocator? locator})
+    : _hdcPath = hdcPath {
+    _locator = locator ?? HdcLocator(bundledPath: _bundledHdcPath());
+  }
 
   String get hdcPath => _hdcPath;
 
@@ -18,69 +23,13 @@ class HdcClient {
     await _resolveHdc();
     return _hdcPath;
   }
-  /// Finder/Dock 启动的 GUI 进程 PATH 只有 `/usr/bin:/bin:/usr/sbin:/sbin`，
-  /// 直接 `Process.run('hdc')` 会 No such file or directory。
-  /// 先 `which`，再借用户登录 shell（继承 ~/.zshrc 的 PATH），最后扫常见 SDK 路径。
+
+  /// Finder/Dock 启动的 GUI 进程 PATH 可能不包含 OpenHarmony SDK。
+  /// 解析顺序由 [HdcLocator] 统一管理，避免 UI 和终端使用不同的 HDC。
   Future<void> _resolveHdc() async {
     if (_resolved) return;
     _resolved = true;
-    if (_hdcPath != 'hdc' && await File(_hdcPath).exists()) return;
-
-    // 优先使用应用内嵌的 hdc
-    final bundled = _bundledHdcPath();
-    if (bundled != null && await File(bundled).exists()) {
-      _hdcPath = bundled;
-      return;
-    }
-
-    Future<String?> tryRun(String exe, List<String> args) async {
-      try {
-        final r = await Process.run(exe, args);
-        if (r.exitCode == 0) {
-          final out = (r.stdout as String).trim();
-          if (out.isNotEmpty && await File(out.split('\n').first).exists()) {
-            return out.split('\n').first;
-          }
-        }
-      } catch (_) {}
-      return null;
-    }
-
-    final which = await tryRun('/usr/bin/which', ['hdc']);
-    if (which != null) { _hdcPath = which; return; }
-
-    if (Platform.isWindows) {
-      final where = await tryRun('where', ['hdc']);
-      if (where != null) { _hdcPath = where; return; }
-    }
-
-    if (Platform.isMacOS || Platform.isLinux) {
-      final shell = Platform.environment['SHELL'] ?? '/bin/zsh';
-      final viaShell = await tryRun(shell, ['-l', '-i', '-c', 'command -v hdc']);
-      if (viaShell != null) { _hdcPath = viaShell; return; }
-    }
-
-    final home = Platform.environment['HOME'] ?? '';
-    final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
-    final programFiles = Platform.environment['ProgramFiles'] ?? '';
-    final candidates = <String>[
-      if (home.isNotEmpty) ...[
-        '$home/Library/OpenHarmony/Sdk/12/toolchains/hdc',
-        '$home/Library/OpenHarmony/Sdk/20/toolchains/hdc',
-        '$home/Library/Huawei/Sdk/openharmony/12/toolchains/hdc',
-      ],
-      '/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc',
-      if (programFiles.isNotEmpty) ...[
-        '$programFiles\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\toolchains\\hdc.exe',
-      ],
-      if (localAppData.isNotEmpty) ...[
-        '$localAppData\\Huawei\\Sdk\\openharmony\\12\\toolchains\\hdc.exe',
-        '$localAppData\\Huawei\\Sdk\\openharmony\\20\\toolchains\\hdc.exe',
-      ],
-    ];
-    for (final p in candidates) {
-      if (await File(p).exists()) { _hdcPath = p; return; }
-    }
+    _hdcPath = await _locator.resolve(_hdcPath);
   }
 
   String? _bundledHdcPath() {
@@ -100,7 +49,12 @@ class HdcClient {
   Future<ProcessResult> _run(List<String> args, {Duration? timeout}) async {
     await _resolveHdc();
     try {
-      final fut = Process.run(_hdcPath, args, stdoutEncoding: utf8, stderrEncoding: utf8);
+      final fut = Process.run(
+        _hdcPath,
+        args,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
       return timeout == null ? await fut : await fut.timeout(timeout);
     } on ProcessException {
       throw HdcException('找不到 hdc 命令，请重新安装应用。');
@@ -109,7 +63,10 @@ class HdcClient {
 
   /// `hdc list targets` -> [HdcDevice]，设备名通过 `hdc shell param get const.product.name` 获取
   Future<List<HdcDevice>> devices() async {
-    final r = await _run(['list', 'targets'], timeout: const Duration(seconds: 5));
+    final r = await _run([
+      'list',
+      'targets',
+    ], timeout: const Duration(seconds: 5));
     if (r.exitCode != 0) {
       throw HdcException('list targets failed: ${r.stderr}');
     }
@@ -117,7 +74,11 @@ class HdcClient {
     final out = <HdcDevice>[];
     for (final raw in lines) {
       final line = raw.trim();
-      if (line.isEmpty || line.startsWith('[Empty]') || line.startsWith('[Info]')) continue;
+      if (line.isEmpty ||
+          line.startsWith('[Empty]') ||
+          line.startsWith('[Info]')) {
+        continue;
+      }
       // 例： "1234567890ABCDEF    Connected"
       final parts = line.split(RegExp(r'\s+'));
       if (parts.isEmpty) continue;
@@ -129,8 +90,12 @@ class HdcClient {
       // 获取设备名
       String name = '';
       try {
-        final nameResult = await _run(['-t', serial, 'shell', 'param get const.product.name'],
-            timeout: const Duration(seconds: 5));
+        final nameResult = await _run([
+          '-t',
+          serial,
+          'shell',
+          'param get const.product.name',
+        ], timeout: const Duration(seconds: 5));
         name = (nameResult.stdout as String).trim();
         // 清理可能的空字节或多余空白
         name = name.replaceAll('\u{0000}', '').replaceAll(RegExp(r'\s+'), ' ');
@@ -138,7 +103,14 @@ class HdcClient {
         // 忽略名称获取失败
       }
 
-      out.add(HdcDevice(serial: serial, state: state, connection: connection, name: name));
+      out.add(
+        HdcDevice(
+          serial: serial,
+          state: state,
+          connection: connection,
+          name: name,
+        ),
+      );
     }
     return out;
   }
@@ -159,14 +131,18 @@ class HdcClient {
 
   Future<int?> _tryFport(String serial, int localPort, int devicePort) async {
     final r = await _run([
-      '-t', serial, 'fport',
-      'tcp:$localPort', 'tcp:$devicePort'
+      '-t',
+      serial,
+      'fport',
+      'tcp:$localPort',
+      'tcp:$devicePort',
     ], timeout: const Duration(seconds: 5));
     if (r.exitCode != 0) return null;
     final stdout = (r.stdout as String) + (r.stderr as String);
     if (localPort != 0) {
       // 根据返回判断是否成功
-      if (stdout.contains('Forwardport result:OK') || stdout.contains('forward')) {
+      if (stdout.contains('Forwardport result:OK') ||
+          stdout.contains('forward')) {
         return localPort;
       }
       return null;
@@ -178,12 +154,52 @@ class HdcClient {
     return null;
   }
 
-  Future<void> removeForward(String serial, int localPort, {int devicePort = 53535}) async {
-    await _run(['-t', serial, 'fport', 'rm', 'tcp:$localPort', 'tcp:$devicePort'], timeout: const Duration(seconds: 5));
+  Future<void> removeForward(
+    String serial,
+    int localPort, {
+    int devicePort = 53535,
+  }) async {
+    await _run([
+      '-t',
+      serial,
+      'fport',
+      'rm',
+      'tcp:$localPort',
+      'tcp:$devicePort',
+    ], timeout: const Duration(seconds: 5));
+  }
+
+  /// 启动设备端 ScrcpyService。重复启动由 OpenHarmony 服务管理器幂等处理。
+  Future<void> startScrcpyService(String serial) async {
+    final r = await _run([
+      '-t',
+      serial,
+      'shell',
+      'aa start -a ScrcpyService -b com.hntek.openharmony.scrcpy.server',
+    ], timeout: const Duration(seconds: 10));
+    final output = ((r.stdout as String) + (r.stderr as String)).trim();
+    final lower = output.toLowerCase();
+    final failed =
+        r.exitCode != 0 ||
+        lower.contains('[fail]') ||
+        lower.contains('error') ||
+        lower.contains('failed') ||
+        lower.contains('failure[') ||
+        lower.contains('not found') ||
+        lower.contains('permission denied');
+    if (failed) {
+      throw HdcException(
+        output.isEmpty ? '启动 ScrcpyService 失败（exit=${r.exitCode}）' : output,
+      );
+    }
   }
 
   /// 安装 hap（默认覆盖安装 -r）。成功返回 stdout，失败抛 [HdcException] 带 stderr。
-  Future<String> installHap(String serial, String hapPath, {bool replace = true}) async {
+  Future<String> installHap(
+    String serial,
+    String hapPath, {
+    bool replace = true,
+  }) async {
     final args = <String>['-t', serial, 'install'];
     if (replace) args.add('-r');
     args.add(hapPath);
@@ -193,37 +209,49 @@ class HdcClient {
     final combined = [stdout, stderr].where((s) => s.isNotEmpty).join('\n');
     // hdc 在某些场景退出码为 0 但 stdout 含 "fail" / "Failed" 字样
     final lower = combined.toLowerCase();
-    final fail = r.exitCode != 0 ||
+    final fail =
+        r.exitCode != 0 ||
         lower.contains('install fail') ||
         lower.contains('install failed') ||
         lower.contains('failure[');
     if (fail) {
-      throw HdcException(combined.isEmpty ? 'install exit=${r.exitCode}' : combined);
+      throw HdcException(
+        combined.isEmpty ? 'install exit=${r.exitCode}' : combined,
+      );
     }
     return combined.isEmpty ? 'install ok' : combined;
   }
 
   /// 卸载应用。成功返回 stdout，失败抛 [HdcException]。
   Future<String> uninstall(String serial, String bundle) async {
-    final r = await _run(
-      ['-t', serial, 'uninstall', bundle],
-      timeout: const Duration(seconds: 30),
-    );
+    final r = await _run([
+      '-t',
+      serial,
+      'uninstall',
+      bundle,
+    ], timeout: const Duration(seconds: 30));
     final stdout = (r.stdout as String).trim();
     final stderr = (r.stderr as String).trim();
     final combined = [stdout, stderr].where((s) => s.isNotEmpty).join('\n');
     final lower = combined.toLowerCase();
-    final fail = r.exitCode != 0 ||
+    final fail =
+        r.exitCode != 0 ||
         lower.contains('uninstall fail') ||
         lower.contains('uninstall failed') ||
         lower.contains('failure[');
     if (fail) {
-      throw HdcException(combined.isEmpty ? 'uninstall exit=${r.exitCode}' : combined);
+      throw HdcException(
+        combined.isEmpty ? 'uninstall exit=${r.exitCode}' : combined,
+      );
     }
     return combined.isEmpty ? 'uninstall ok' : combined;
   }
 
-  Future<String> shell(String serial, String cmd, {Duration timeout = const Duration(seconds: 10)}) async {
+  Future<String> shell(
+    String serial,
+    String cmd, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
     final r = await _run(['-t', serial, 'shell', cmd], timeout: timeout);
     return ((r.stdout as String) + (r.stderr as String)).trim();
   }
@@ -236,26 +264,58 @@ class HdcClient {
       final lines = text.split('\n');
       for (int i = 0; i < lines.length; i++) {
         if (lines[i].isNotEmpty) {
-          await _run(['shell', 'uitest', 'uiInput', 'inputText', '$x', '$y', lines[i]],
-              timeout: const Duration(seconds: 10));
+          await _run([
+            'shell',
+            'uitest',
+            'uiInput',
+            'inputText',
+            '$x',
+            '$y',
+            lines[i],
+          ], timeout: const Duration(seconds: 10));
         }
         if (i < lines.length - 1) {
-          await _run(['shell', 'uitest', 'uiInput', 'keyEvent', '2054'],
-              timeout: const Duration(seconds: 5));
+          await _run([
+            'shell',
+            'uitest',
+            'uiInput',
+            'keyEvent',
+            '2054',
+          ], timeout: const Duration(seconds: 5));
         }
       }
     } else {
-      await _run(['shell', 'uitest', 'uiInput', 'inputText', '$x', '$y', text],
-          timeout: const Duration(seconds: 10));
+      await _run([
+        'shell',
+        'uitest',
+        'uiInput',
+        'inputText',
+        '$x',
+        '$y',
+        text,
+      ], timeout: const Duration(seconds: 10));
     }
   }
 
   /// 通过 uitest uiInput swipe 执行滑动操作。
   /// velocity 范围 200-40000，默认 600。
-  Future<void> uitestSwipe(int x1, int y1, int x2, int y2, {int velocity = 600}) async {
+  Future<void> uitestSwipe(
+    int x1,
+    int y1,
+    int x2,
+    int y2, {
+    int velocity = 600,
+  }) async {
     await _run([
-      'shell', 'uitest', 'uiInput', 'swipe',
-      '$x1', '$y1', '$x2', '$y2', '$velocity',
+      'shell',
+      'uitest',
+      'uiInput',
+      'swipe',
+      '$x1',
+      '$y1',
+      '$x2',
+      '$y2',
+      '$velocity',
     ], timeout: const Duration(seconds: 10));
   }
 }

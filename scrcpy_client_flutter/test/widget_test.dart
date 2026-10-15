@@ -47,7 +47,7 @@ void main() {
   test('原生媒体结果映射保留路径与统计信息', () {
     final result = MediaSaveResult.fromMap({
       'ok': true,
-      'path': '/Desktop/HongJing_Recording.mp4',
+      'path': '/Desktop/HongmengMirror_Recording.mp4',
       'durationUs': 2000000,
       'frameCount': 30,
     });

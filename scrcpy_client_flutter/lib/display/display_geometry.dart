@@ -31,11 +31,35 @@ class DisplayGeometry {
     return PixelSize(rawWidth, rawHeight);
   }
 
-  static int defaultMaxShort(DisplayInfo display, {required bool isWifi}) {
-    final nativeShort = math.min(
-      display.logicalWidth,
-      display.logicalHeight,
+  static int videoQuarterTurns(
+    int rawWidth,
+    int rawHeight,
+    DisplayInfo display,
+  ) {
+    if (display.rotation.isEven) {
+      return quarterTurns(display.rotation);
+    }
+    final rawRatio = rawWidth / rawHeight;
+    final displayRatio = display.logicalWidth / display.logicalHeight;
+    final directError = (rawRatio - displayRatio).abs();
+    final rotatedError = (rawHeight / rawWidth - displayRatio).abs();
+    return directError <= rotatedError ? 0 : quarterTurns(display.rotation);
+  }
+
+  static PixelSize effectiveVideoSize(
+    int rawWidth,
+    int rawHeight,
+    DisplayInfo display,
+  ) {
+    return effectiveSize(
+      rawWidth,
+      rawHeight,
+      videoQuarterTurns(rawWidth, rawHeight, display),
     );
+  }
+
+  static int defaultMaxShort(DisplayInfo display, {required bool isWifi}) {
+    final nativeShort = math.min(display.logicalWidth, display.logicalHeight);
     return isWifi ? math.min(720, nativeShort) : nativeShort;
   }
 
